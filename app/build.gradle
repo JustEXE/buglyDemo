@@ -1,0 +1,151 @@
+apply plugin: 'com.android.application'
+
+android {
+    compileSdkVersion 25
+    buildToolsVersion "25.0.2"
+    defaultConfig {
+        applicationId "com.zb.buglytest"
+        minSdkVersion 16
+        targetSdkVersion 25
+        versionCode 1
+        versionName "1.0"
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+        ndk {
+            //设置支持的SO库架构
+            abiFilters 'armeabi' //, 'x86', 'armeabi-v7a', 'x86_64', 'arm64-v8a'
+        }
+    }
+    signingConfigs {
+        debugConfig {
+            keyAlias '123456'
+            keyPassword 'Lw2016edu'
+            storeFile file('E:/key/LeeOneParent_new.jks')
+            storePassword 'Lw2016edu'
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debugConfig
+            System.out.print("vvvvvv-->" + getVersionCode(true, false) + ",,,," + getVersionName(true))
+        }
+        release {
+            minifyEnabled true
+            //Zipalign优化
+            zipAlignEnabled true
+            // 移除无用的resource文件
+            shrinkResources true
+            //前一部分代表系统默认的android程序的混淆文件，该文件已经包含了基本的混淆声明，后一个文件是自己的定义混淆文件
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            signingConfig signingConfigs.debugConfig
+        }
+    }
+}
+
+dependencies {
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+    androidTestCompile('com.android.support.test.espresso:espresso-core:2.2.2', {
+        exclude group: 'com.android.support', module: 'support-annotations'
+    })
+    compile 'com.android.support:appcompat-v7:25.1.1'
+    compile 'com.android.support:design:25.1.1'
+    testCompile 'junit:junit:4.12'
+    compile 'com.tencent.bugly:crashreport_upgrade:latest.release'//其中latest.release指代最新版本号，也可以指定明确的版本号，例如1.2.0
+    compile 'com.tencent.bugly:nativecrashreport:latest.release' //其中latest.release指代最新版本号，也可以指定明确的版本号，例如2.2.0
+    compile "com.android.support:multidex:1.0.1" // 多dex配置
+    compile 'com.tencent.bugly:crashreport_upgrade:latest.release'//其中latest.release指代最新版本号，也可以指定明确的版本号，例如1.2.1
+}
+
+
+def getVersionCode(boolean addVersion, boolean isDebugServer) {
+    def versionFile = file('../gradle.properties')
+    if (versionFile.canRead()) {
+        def Properties versionProps = new Properties()
+        versionProps.load(new FileInputStream(versionFile))
+        def versionCode = 0
+        if (isDebugServer) {
+            versionCode = "${VERSION_DEBUG_CODE}".toInteger()
+        } else {
+            versionCode = "${VERSION_CODE}".toInteger()
+        }
+        def runTasks = gradle.startParameter.taskNames
+        def canAddVersion = false
+        for (int i = 0; i < runTasks.size(); i++) {
+            if (runTasks.get(i).contains("assemble") && runTasks.get(i).contains("Release")) {
+                canAddVersion = true;
+                break
+            }
+        }
+        if (canAddVersion && addVersion) {
+            if (isDebugServer) {
+                versionProps['VERSION_DEBUG_CODE'] = (++versionCode).toString()
+                versionProps.store(versionFile.newWriter(), null)
+            } else {
+                versionProps['VERSION_CODE'] = (++versionCode).toString()
+                versionProps.store(versionFile.newWriter(), null)
+            }
+        }
+        return --versionCode
+    } else {
+        throw new GradleException("Could not find version.properties!")
+    }
+}
+
+def getVersionName(boolean isTest) {
+    def versionFile = file('../gradle.properties')
+    if (versionFile.canRead()) {
+        def Properties versionProps = new Properties()
+        versionProps.load(new FileInputStream(versionFile))
+        def versionName = 0
+        if (versionName.equals(0)) {
+            try {
+                versionName = "${VERSION_NAME}".toString() + getSvnRevision()
+            } catch (Exception e) {
+            }
+        }
+        if (versionName.equals(0)) {
+            try {
+                versionName = "${VERSION_NAME}".toString() + getGitRevision()
+            } catch (Exception e) {
+            }
+        }
+        if (isTest) {
+            versionName = versionName + "." + (--("${VERSION_DEBUG_CODE}".toInteger())).toString()
+        } else {
+//            versionName = versionName + versionProps['PARENT.VERSION_CODE']
+        }
+        return versionName
+    } else {
+        throw new GradleException("Could not find version.properties!")
+    }
+}
+
+def getSvnRevision() {
+    new ByteArrayOutputStream().withStream { os ->
+        def result = exec {
+            executable = 'svn'
+            args = ['info', '../']
+            standardOutput = os
+        }
+        def outputAsString = os.toString()
+        def matchLastChangedRev = outputAsString =~ /Last Changed Rev: (\d+)/
+
+        ext.svnRev = "${matchLastChangedRev[0][1]}".toInteger()
+    }
+
+    return svnRev
+}
+
+def getGitRevision() {
+    try {
+        String gitRev = 'git rev-parse --short HEAD'.execute(null, project.rootDir).text.trim()
+        if (gitRev == null) {
+            throw new GradleException("can't get git rev, you should add git to system path or just input test value, such as 'testTinkerId'")
+        }
+        return gitRev
+    } catch (Exception e) {
+        throw new GradleException("can't get git rev, you should add git to system path or just input test value, such as 'testTinkerId'")
+    }
+}
+
+// 依赖插件脚本
+apply from: 'tinker-support.gradle'
